@@ -351,6 +351,41 @@
     .btn-clear-chat { background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 0 0.8rem; height: 44px; font-family: var(--mono); font-size: 0.7rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
     .btn-clear-chat:hover { border-color: var(--error); color: var(--error); }
 
+    /* SQL block toggle */
+    .sql-toggle-btn {
+      margin-top: 0.5rem;
+      background: none;
+      border: 1px solid var(--border2);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 0.25rem 0.7rem;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .sql-toggle-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+    .sql-block {
+      margin-top: 0.5rem;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 0.8rem 1rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent2);
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.6;
+      display: none;
+    }
+    .sql-block.visible { display: block; }
+
     /* SCROLLBAR */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -663,8 +698,8 @@
 <div class="page" id="page-chat">
   <div class="page-header">
     <div class="page-header-left">
-      <h1><span class="tag tag-ai">RAG</span> Chat com Documentos</h1>
-      <p>/chat — pesquisa semântica nos PDFs via Chroma + Mistral (Ollama)</p>
+      <h1><span class="tag tag-ai">SQL</span> Chat com a Base de Dados</h1>
+      <p>/chat — linguagem natural → SQL via LLaMA 3.3 + Groq</p>
     </div>
   </div>
 
@@ -674,7 +709,7 @@
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <p>Faz uma pergunta sobre os documentos indexados.<br/>O modelo irá pesquisar nos embeddings e responder.</p>
+        <p>Faz uma pergunta sobre os dados económicos.<br/>O modelo irá gerar e executar SQL automaticamente.</p>
       </div>
     </div>
 
@@ -699,7 +734,7 @@
 
 <script>
   // ── CONFIG ───────────────────────────────────────────
-  const API_BASE      = 'https://op-report-api.onrender.com';
+  const API_BASE      = 'http://localhost:8000';
   const ENDPOINT_POST = `${API_BASE}/op_report`;
   const ENDPOINT_GET  = `${API_BASE}/op_report`;
   const ENDPOINT_CHAT = `${API_BASE}/chat`;
@@ -1054,14 +1089,55 @@
 
     const label = document.createElement('div');
     label.className = 'msg-label';
-    label.textContent = role === 'user' ? 'Tu' : 'Mistral';
-
-    const bubble = document.createElement('div');
-    bubble.className = 'msg-bubble';
-    bubble.textContent = content;
+    label.textContent = role === 'user' ? 'Tu' : 'LLaMA';
 
     div.appendChild(label);
-    div.appendChild(bubble);
+
+    if (role === 'assistant') {
+      // Separar texto principal do bloco SQL
+      const sqlMatch = content.match(/```sql\s*([\s\S]*?)```/i);
+      const mainText = content.replace(/```sql[\s\S]*?```/gi, '').trim();
+
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble';
+      bubble.textContent = mainText || content;
+      div.appendChild(bubble);
+
+      if (sqlMatch) {
+        const sqlCode = sqlMatch[1].trim();
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'sql-toggle-btn';
+        toggleBtn.innerHTML = '⌥ Ver SQL';
+        toggleBtn.dataset.open = 'false';
+
+        const sqlBlock = document.createElement('pre');
+        sqlBlock.className = 'sql-block';
+        sqlBlock.textContent = sqlCode;
+
+        // Respeitar estado do modo dev
+        if (window.devMode) {
+          sqlBlock.classList.add('visible');
+          toggleBtn.innerHTML = '⌥ Ocultar SQL';
+          toggleBtn.dataset.open = 'true';
+        }
+
+        toggleBtn.addEventListener('click', () => {
+          const isOpen = toggleBtn.dataset.open === 'true';
+          sqlBlock.classList.toggle('visible', !isOpen);
+          toggleBtn.dataset.open = String(!isOpen);
+          toggleBtn.innerHTML = isOpen ? '⌥ Ver SQL' : '⌥ Ocultar SQL';
+        });
+
+        div.appendChild(toggleBtn);
+        div.appendChild(sqlBlock);
+      }
+    } else {
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble';
+      bubble.textContent = content;
+      div.appendChild(bubble);
+    }
 
     if (sources && sources.length) {
       const srcRow = document.createElement('div');
@@ -1091,7 +1167,7 @@
     div.id = 'typing-indicator';
     const label = document.createElement('div');
     label.className = 'msg-label';
-    label.textContent = 'Mistral';
+    label.textContent = 'LLaMA';
     const bubble = document.createElement('div');
     bubble.className = 'typing-bubble';
     bubble.innerHTML = '<span></span><span></span><span></span>';
@@ -1100,6 +1176,9 @@
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
   }
+
+  // ── DEV MODE ──
+  window.devMode = false;
 
   function removeTyping() {
     const el = document.getElementById('typing-indicator');
@@ -1508,11 +1587,6 @@
       }
     });
   }
-
-  // ── INIT ─────────────────────────────────────────────
-  document.addEventListener('DOMContentLoaded', () => {
-    showPage('table');
-  });
 </script>
 </body>
 </html>
